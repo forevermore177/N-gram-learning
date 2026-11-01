@@ -111,7 +111,7 @@ def run_compare_for(path, args, label=None):
         print(f"{n:>3} | {fmt(p_train_none):>14} | {p_train_lap:>15.2f} | {fmt(p_test_none):>14} | {p_test_lap:>15.2f}")
     print()
 
-    out_dir = PROJECT_ROOT / "results"
+    out_dir = PROJECT_ROOT / "advance_results"
     out_dir.mkdir(exist_ok=True)
     suffix = "" if label is None else f"_{tag}"       # 单语料保持原文件名
     csv_path = out_dir / f"perplexity{suffix}.csv"
@@ -145,100 +145,163 @@ def run_compare_for(path, args, label=None):
 def cmd_compare(args):
     if args.data_b:
         import random
+
+        # ---------- 1) 加载语料、切分、建词表 ----------
         tokens_A = load_corpus(args.data, args.mode)
         tokens_B = load_corpus(args.data_b, args.mode)
-
-        # 1) 各切 80/20，词表各建各的
         train_A, test_A = split_train_test(tokens_A, tokens_A, args.train_ratio)
         train_B, test_B = split_train_test(tokens_B, tokens_B, args.train_ratio)
         vocab_A = build_vocab(train_A)
         vocab_B = build_vocab(train_B)
-        V_union = len(vocab_A | vocab_B)       # 所有 N 共用同一个 |V|，Laplace 公平
 
         a_name, b_name = Path(args.data).stem, Path(args.data_b).stem
         print(f"A = {a_name}: train {len(train_A)} / test {len(test_A)} / |V_A|={len(vocab_A)}")
         print(f"B = {b_name}: train {len(train_B)} / test {len(test_B)} / |V_B|={len(vocab_B)}")
-        print(f"Laplace 平滑，统一 |V| = |V_A ∪ V_B| = {V_union}\n")
 
-        # 2) 截 10 段（与 N 无关，只做一次），打乱
+        vocab_all = vocab_A | vocab_B
+
+        if args.data_c:
+            tokens_C = load_corpus(args.data_c, args.mode)
+            train_C, test_C = split_train_test(tokens_C, tokens_C, args.train_ratio)
+            vocab_C = build_vocab(train_C)
+            vocab_all |= vocab_C
+            c_name = Path(args.data_c).stem
+            print(f"C = {c_name}: train {len(train_C)} / test {len(test_C)} / |V_C|={len(vocab_C)}")
+
+        V_union = len(vocab_all)
+        print(f"Laplace 平滑，统一 |V| = |V_A ∪ V_B{' ∪ V_C' if args.data_c else ''}| = {V_union}\n")
+
+        # ---------- 2) 采样测试段 ----------
         segs_A = sample_segments(test_A, 5, 200)
         segs_B = sample_segments(test_B, 5, 200)
         assert len(segs_A) == 5 and len(segs_B) == 5, \
             f"段数不足：A={len(segs_A)}, B={len(segs_B)}（语料太短，减小每段长度）"
-        samples = [(s, "A", a_name) for s in segs_A] + [(s, "B", b_name) for s in segs_B]
+
+        samples = [(s, "A", a_name) for s in segs_A] + \
+                  [(s, "B", b_name) for s in segs_B]
+
+        if args.data_c:
+            segs_C = sample_segments(test_C, 5, 200)
+            samples += [(s, "C", c_name) for s in segs_C]
+
+        if args.mystery:
+            tokens_M = load_corpus(args.mystery, args.mode)
+            segs_M = sample_segments(tokens_M, 5, 200)
+            m_name = Path(args.mystery).stem
+            samples += [(s, "?", m_name) for s in segs_M]
+
         random.seed(args.seed)
         random.shuffle(samples)
 
-        # 3) 对每个 n 循环
-        all_results = []     # (n, correct, total, acc, detail_rows)
-        for n in args.ns:
-            model_A = build_ngram_model(train_A, n)
-            model_B = build_ngram_model(train_B, n)
+        n_counted = sum(1 for s in samples if s[1] != "?")
+        labels_all = ["A", "B"] + (["C"] if args.data_c else [])
 
-            print(f"===== N={n} 作者归属测试（10 段 × 约200 token） =====")
-            print(f"{'#':>3}  {'真实':>4}  {'预测':>4}  {'PPL_A':>10}  {'PPL_B':>10}  {'判定':>4}")
-            print("-" * 52)
+        # ---------- 3) 对每个 n 循环（注意测试循环也在里面！） ----------
+        all_results = []
+        for n in args.ns:
+            models = {
+                "A": build_ngram_model(train_A, n),
+                "B": build_ngram_model(train_B, n),
+            }
+            if args.data_c:
+                models["C"] = build_ngram_model(train_C, n)
+
+            ppl_header = "  ".join(f"{'PPL_'+lab:>10}" for lab in labels_all)
+            print(f"===== N={n} 作者归属测试（共 {len(samples)} 段，其中 {n_counted} 段有标签） =====")
+            print(f"{'#':>3}  {'真实':>4}  {'预测':>4}  {ppl_header}  {'判定':>4}")
+            print("-" * (26 + 12 * len(labels_all)))
 
             correct = 0
-            detail = []
+            detail = []          # 有标签的样本
+            mystery_rows = []    # 无标签的 mystery 样本
             for i, (seg, true_label, true_name) in enumerate(samples, 1):
-                ppl_A = calculate_perplexity(model_A, seg, n, V_union, smoothing="laplace")
-                ppl_B = calculate_perplexity(model_B, seg, n, V_union, smoothing="laplace")
-                pred = "A" if ppl_A < ppl_B else "B"
-                ok = (pred == true_label)
-                correct += ok
-                detail.append((i, true_label, true_name, pred, ppl_A, ppl_B, ok))
-                mark = "✓" if ok else "✗"
-                print(f"{i:>3}  {true_label:>4}  {pred:>4}  {ppl_A:>10.2f}  {ppl_B:>10.2f}  {mark:>4}")
+                ppls = {lab: calculate_perplexity(m, seg, n, V_union, smoothing="laplace")
+                        for lab, m in models.items()}
+                pred = min(ppls, key=ppls.get)
 
-            acc = correct / len(samples)
-            print(f"→ N={n} 准确率：{correct}/{len(samples)} = {acc:.1%}\n")
-            all_results.append((n, correct, len(samples), acc, detail))
+                counted = (true_label != "?")
+                ok = counted and (pred == true_label)
+                if counted:
+                    correct += ok
+                    mark = "✓" if ok else "✗"
+                    detail.append((i, true_label, true_name, pred, ppls, ok))
+                else:
+                    mark = "?"
+                    mystery_rows.append((i, true_name, pred, ppls))
 
-        # 4) 汇总表：N vs 鉴别准确率
+                ppl_str = "  ".join(f"{ppls[lab]:>10.2f}" for lab in labels_all)
+                print(f"{i:>3}  {true_label:>4}  {pred:>4}  {ppl_str}  {mark:>4}")
+
+            acc = correct / n_counted if n_counted else 0.0
+            print(f"→ N={n} 有标签样本准确率：{correct}/{n_counted} = {acc:.1%}")
+            if mystery_rows:
+                print("  神秘文本判定（不计入准确率）：")
+                for i, mname, pred, ppls in mystery_rows:
+                    pstr = ", ".join(f"{lab}={v:.2f}" for lab, v in ppls.items())
+                    print(f"    #{i} [{mname}] → 判给 {pred}  ({pstr})")
+            print()
+
+            all_results.append((n, correct, n_counted, acc, detail, mystery_rows))
+
+        # ---------- 4) 汇总 ----------
         print("===== N vs 鉴别准确率 =====")
         print(f"{'N':>3} | {'正确':>8} | {'准确率':>8}")
         print("-" * 30)
-        for n, correct, total, acc, _ in all_results:
+        for n, correct, total, acc, _, _ in all_results:
             print(f"{n:>3} | {correct:>3}/{total:<4} | {acc:>7.1%}")
         print()
 
-        # 5) 记录：明细 + 汇总
-        out_dir = PROJECT_ROOT / "results"
+        # ---------- 5) 落盘 ----------
+        out_dir = PROJECT_ROOT / "advance_results"
         out_dir.mkdir(exist_ok=True)
 
         detail_path = out_dir / "attribution_detail_by_n.csv"
         with detail_path.open("w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["n", "#", "true_label", "true_name", "pred_label",
-                             "ppl_model_A", "ppl_model_B", "correct"])
-            for n, _, _, _, detail in all_results:
+            writer.writerow(["n", "#", "true_label", "true_name", "pred_label"] +
+                            [f"ppl_{lab}" for lab in labels_all] + ["correct"])
+            for n, _, _, _, detail, _ in all_results:
                 for r in detail:
-                    writer.writerow([n, r[0], r[1], r[2], r[3],
-                                     f"{r[4]:.2f}", f"{r[5]:.2f}", int(r[6])])
+                    ppl_cells = [f"{r[4][lab]:.2f}" for lab in labels_all]
+                    writer.writerow([n, r[0], r[1], r[2], r[3]] + ppl_cells + [int(r[5])])
         print(f"逐段明细已保存到 {detail_path}")
+
+        if args.mystery:
+            mystery_path = out_dir / "attribution_mystery_by_n.csv"
+            with mystery_path.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["n", "#", "mystery_name", "pred_label"] +
+                                [f"ppl_{lab}" for lab in labels_all])
+                for n, _, _, _, _, mrows in all_results:
+                    for r in mrows:
+                        ppl_cells = [f"{r[3][lab]:.2f}" for lab in labels_all]
+                        writer.writerow([n, r[0], r[1], r[2]] + ppl_cells)
+            print(f"神秘文本判定已保存到 {mystery_path}")
 
         summary_path = out_dir / "attribution_by_n.csv"
         with summary_path.open("w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["n", "correct", "total", "accuracy", "V_union"])
-            for n, correct, total, acc, _ in all_results:
+            for n, correct, total, acc, _, _ in all_results:
                 writer.writerow([n, correct, total, f"{acc:.3f}", V_union])
         print(f"汇总表已保存到 {summary_path}")
 
-        # 6) 折线图：N vs 准确率
+        # ---------- 6) 曲线图 ----------
         try:
             import matplotlib
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
 
+            n_classes = len(labels_all)
+            baseline = 100.0 / n_classes
             ns   = [r[0] for r in all_results]
             accs = [r[3] * 100 for r in all_results]
             plt.figure()
             plt.plot(ns, accs, "o-", color="#4C72B0", linewidth=2, markersize=8)
             for nn, aa in zip(ns, accs):
                 plt.text(nn, aa, f"{aa:.0f}%", ha="center", va="bottom")
-            plt.axhline(50, color="red", linestyle="--", alpha=0.5, label="Random baseline (50%)")
+            plt.axhline(baseline, color="red", linestyle="--", alpha=0.5,
+                        label=f"Random baseline ({baseline:.0f}%)")
             plt.xticks(ns)
             plt.ylim(0, 105)
             plt.xlabel("n")
@@ -256,7 +319,7 @@ def cmd_compare(args):
         return
 
     run_compare_for(args.data, args)
-    
+
 def main():
     parser = argparse.ArgumentParser(description="N-gram 文本风格模仿生成器")
 
@@ -287,7 +350,10 @@ def main():
                    help="第二份语料；给出时做 10 段作者归属测试（A/B 各 5 段，PPL 低者判为作者）")
     p_cmp.add_argument("--cross-n", dest="cross_n", type=int, default=3,
                    help="交叉评估的 n（默认 3，即任务要求的 N=3）")
-
+    p_cmp.add_argument("--data-c", dest="data_c", default=None,
+                       help="第三份语料；给出时做 A/B/C 三分类鉴别")
+    p_cmp.add_argument("--mystery", default=None,
+                       help="神秘文本文件；给出时混入测试，只记录判给谁，不计入准确率")
     args = parser.parse_args()
     handler = {"inspect": cmd_inspect, "generate": cmd_generate, "compare": cmd_compare}[args.command]
     try:
