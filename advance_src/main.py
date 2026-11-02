@@ -172,21 +172,21 @@ def cmd_compare(args):
         print(f"Laplace 平滑，统一 |V| = |V_A ∪ V_B{' ∪ V_C' if args.data_c else ''}| = {V_union}\n")
 
         # ---------- 2) 采样测试段 ----------
-        segs_A = sample_segments(test_A, 5, 200)
-        segs_B = sample_segments(test_B, 5, 200)
-        assert len(segs_A) == 5 and len(segs_B) == 5, \
-            f"段数不足：A={len(segs_A)}, B={len(segs_B)}（语料太短，减小每段长度）"
+        segs_A = sample_segments(test_A, args.segs, 200)
+        segs_B = sample_segments(test_B, args.segs, 200)
+        assert len(segs_A) == args.segs and len(segs_B) == args.segs, \
+            f"段数不足：A={len(segs_A)}, B={len(segs_B)}（语料太短，减小 --segs 或段长）"
 
         samples = [(s, "A", a_name) for s in segs_A] + \
                   [(s, "B", b_name) for s in segs_B]
 
         if args.data_c:
-            segs_C = sample_segments(test_C, 5, 200)
+            segs_C = sample_segments(test_C, args.segs, 200)
             samples += [(s, "C", c_name) for s in segs_C]
 
         if args.mystery:
             tokens_M = load_corpus(args.mystery, args.mode)
-            segs_M = sample_segments(tokens_M, 5, 200)
+            segs_M = sample_segments(tokens_M, args.segs, 200)
             m_name = Path(args.mystery).stem
             samples += [(s, "?", m_name) for s in segs_M]
 
@@ -217,7 +217,11 @@ def cmd_compare(args):
             for i, (seg, true_label, true_name) in enumerate(samples, 1):
                 ppls = {lab: calculate_perplexity(m, seg, n, V_union, smoothing="laplace")
                         for lab, m in models.items()}
-                pred = min(ppls, key=ppls.get)
+                min_ppl = min(ppls.values())
+                # 找出所有等于最小 PPL 的标签（允许小误差）
+                candidates = [lab for lab, p in ppls.items() if abs(p - min_ppl) < 0.1]
+                # 如果有多个相同的，随机挑一个
+                pred = random.choice(candidates)
 
                 counted = (true_label != "?")
                 ok = counted and (pred == true_label)
@@ -254,8 +258,9 @@ def cmd_compare(args):
         # ---------- 5) 落盘 ----------
         out_dir = PROJECT_ROOT / "advance_results"
         out_dir.mkdir(exist_ok=True)
+        suffix = f"_{args.tag}" if args.tag else ""
 
-        detail_path = out_dir / "attribution_detail_by_n.csv"
+        detail_path = out_dir / f"attribution_detail_by_n{suffix}.csv"
         with detail_path.open("w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["n", "#", "true_label", "true_name", "pred_label"] +
@@ -267,7 +272,7 @@ def cmd_compare(args):
         print(f"逐段明细已保存到 {detail_path}")
 
         if args.mystery:
-            mystery_path = out_dir / "attribution_mystery_by_n.csv"
+            mystery_path = out_dir / f"attribution_mystery_by_n{suffix}.csv"
             with mystery_path.open("w", encoding="utf-8", newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow(["n", "#", "mystery_name", "pred_label"] +
@@ -278,7 +283,7 @@ def cmd_compare(args):
                         writer.writerow([n, r[0], r[1], r[2]] + ppl_cells)
             print(f"神秘文本判定已保存到 {mystery_path}")
 
-        summary_path = out_dir / "attribution_by_n.csv"
+        summary_path = out_dir / f"attribution_by_n{suffix}.csv"
         with summary_path.open("w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["n", "correct", "total", "accuracy", "V_union"])
@@ -309,7 +314,7 @@ def cmd_compare(args):
             plt.title("N vs Attribution Accuracy")
             plt.legend()
             plt.grid(alpha=0.3)
-            fig_path = out_dir / "attribution_by_n.png"
+            fig_path = out_dir / f"attribution_by_n{suffix}.png"
             plt.savefig(fig_path, dpi=150)
             plt.close()
             print(f"曲线图已保存到 {fig_path}")
@@ -347,13 +352,17 @@ def main():
     p_cmp.add_argument("--train-ratio", dest="train_ratio", type=float, default=0.8)
     p_cmp.add_argument("--seed", type=int, default=42)
     p_cmp.add_argument("--data-b", dest="data_b", default=None,
-                   help="第二份语料；给出时做 10 段作者归属测试（A/B 各 5 段，PPL 低者判为作者）")
+                   help="第二份语料；给出时做作者归属测试（A/B 各 --segs 段，PPL 低者判为作者）")
     p_cmp.add_argument("--cross-n", dest="cross_n", type=int, default=3,
                    help="交叉评估的 n（默认 3，即任务要求的 N=3）")
     p_cmp.add_argument("--data-c", dest="data_c", default=None,
                        help="第三份语料；给出时做 A/B/C 三分类鉴别")
     p_cmp.add_argument("--mystery", default=None,
                        help="神秘文本文件；给出时混入测试，只记录判给谁，不计入准确率")
+    p_cmp.add_argument("--segs", type=int, default=5,
+                       help="每类采样测试段数（默认 5，向后兼容；做统计对比建议 30~50）")
+    p_cmp.add_argument("--tag", default=None,
+                       help="结果文件名标签（如 same_novel / cross_novel_poem），避免多次运行互相覆盖")
     args = parser.parse_args()
     handler = {"inspect": cmd_inspect, "generate": cmd_generate, "compare": cmd_compare}[args.command]
     try:
