@@ -31,7 +31,6 @@
 
 **一则示例**
 ```bash
-
 ===== n=1 生成样例（seed=42）=====
 说，了他绅兴空，便，见中，我诉跟见也煎天恶睛心。唱小，很常同挖打冷欠得们厉什写子罕，他精，他的了大眼眼不；更告样。打。得加说布风圈来他，全；不梦本全』有地人年是
 可多也离没见哇张，，的这越便，得式从果叶天事定冷；说的乎个蝶满多如我地半知说样。口到来从今然上草吟自以，许春，一，几却的论们年夜怪不到打我前各诉想着的他小也他
@@ -51,7 +50,6 @@
 今天晚上，很好的月光。我不见他，已是三十多年；今天见了，精神分外爽快。才知道以前的三十多年；今天见了，精神分外爽快。才知道以前的三十多年；今天见了，精神分外爽
 快。才知道以前的三十多年，全是发昏；然而须十分小心。不然，那赵家的狗，何以看我两眼呢？我怕得有理。二今天全没月光，我知道不妙。早上小心出门，赵贵翁一样，脸色也都
 铁青。我想：我同赵贵翁虽然不是恶人，给大家打死了；几个人便挖出他的心肝来，用油煎炒
-
 ```
 
 ## 4 困惑度
@@ -111,11 +109,11 @@ $$
 这说明词表也会稀释概率！
 
 ## 5 PPL-N （naive和Laplace）
-### 数据呈现
-- 语料1:红楼梦![](../AI07-NGram/results/perplexity_hl.png)
-- 语料2:鲁迅![](../AI07-NGram/results/perplexity_lx.png)
-- 语料3:莎士比亚（char mode）![](../AI07-NGram/results/perplexity_sp.png)
-- 语料4:莎士比亚（word mode）![](../AI07-NGram/results/perplexity_sp2.png)
+### 数据呈现 
+- 语料1:红楼梦<img src="../AI07-NGram/results/perplexity_hl.png" width="300" alt="icon">
+- 语料2:鲁迅<img src="../AI07-NGram/results/perplexity_lx.png" width="300" alt="icon">
+- 语料3:莎士比亚（char mode）<img src="../AI07-NGram/results/perplexity_sp.png" width="300" alt="icon">
+- 语料4:莎士比亚（word mode）<img src="../AI07-NGram/results/perplexity_sp2.png" width="300" alt="icon">
 ### 总结与解释
 1. 无平滑训练时，N越大匹配到的越精准，困惑度单调减，即进入“死记硬背模式”最终，模型在变成了一个没有泛化能力的复读机
 2. Laplace训练模式下，V词表大小会影响概率。比如，
@@ -133,11 +131,12 @@ $$
 
 ### 实验结果：N vs 鉴别准确率
 1. 中文文本：小说vs小说
-![N - accuracy 图表](advance_results/attribution_by_n_cn_novel_novel_2.png)
+<img src="advance_results/attribution_by_n_cn_novel_novel_2.png" width="300" alt="icon">
+
 2. 英文文本
-- novel_novel ![N - accuracy 图表](advance_results/attribution_by_n_en_novel_novel.png)
-- poem_novel ![N - accuracy 图表](advance_results/attribution_by_n_en_poem_novel.png)
-- poem_poem ![N - accuracy 图表](advance_results/attribution_by_n_en_poem_poem.png)
+- novel_novel <img src="advance_results/attribution_by_n_en_novel_novel.png" width="300" alt="icon">
+- poem_novel <img src="advance_results/attribution_by_n_en_poem_novel.png" width="300" alt="icon">
+- poem_poem <img src="advance_results/attribution_by_n_en_poem_poem.png" width="300" alt="icon">
 
 ### 结论
 1. 为什么 N 太大反而失灵？

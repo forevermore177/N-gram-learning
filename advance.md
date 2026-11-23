@@ -124,7 +124,8 @@ P_{KN}(w_i|w_{i-n+2}^{i-1})
 |**失败层次**|高级：连贯性、语义|低级：拼写、句法|
 
 
-2. 学有余力者，跟随 Karpathy 的 **makemore** 教程（[GitHub 仓库](https://github.com/karpathy/makemore) + 配套视频），从零手写一个微型神经语言模型（允许使用 PyTorch，仅本方向例外）；
+#### ToDo
+跟随 Karpathy 的 **makemore** 教程（[GitHub 仓库](https://github.com/karpathy/makemore) + 配套视频），从零手写一个微型神经语言模型
 
 #### 最终回答
 **神经模型用"连续向量"表示上下文，这一下解决了 N-gram 的哪个致命问题？又引入了什么新代价？**
