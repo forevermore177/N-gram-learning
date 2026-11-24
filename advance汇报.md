@@ -16,7 +16,7 @@
 ## 3 N-gram模型
 ### 名字的由来
 - N：窗口见到的token，包括要预测的那一个
-- gram：来自古希腊语$gr\hat amma$，意为写下来的东西
+- gram：来自古希腊语 $gr\hat amma$，意为写下来的东西
 
 ### 生成方式
 1. 统计长度为N-1的上文和紧跟的下一个token，得到一个分布
@@ -61,8 +61,8 @@ $$PPL:=(\prod_{i=1}^{M}P(\omega_i\mid\text{context}_i))^{-\frac{1}{M}}\\=\exp\le
 
 其中：
 - $M$:评估位置总数
-- $\omega_i$:当前第$i$位的真实token
-- $\text{context}_i$:当前第$i$位的上文
+- $\omega_i$:当前第 $i$位的真实token
+- $\text{context}_i$:当前第 $i$位的上文
 
 ### 评估方式
 - 训练集$\rightarrow$训练集
@@ -100,7 +100,7 @@ $$P(w \mid \text{context}) = \frac{\text{count}(\text{context}, w) + 1}{\text{co
 选用刚刚相同的例子，可以发现
 
 $$
-|V|=7(\text{忽略"."})\\
+|V|=7(\text{忽略\text{"."}})\\
 P(\text{cherries}\mid \text{bought})=\dfrac{0+1}{2+7}=\frac{1}{9}\\
 P(\text{apples}\mid \text{bought})=\frac{1+1}{2+7}=\frac{2}{9}\\
 P(\text{bought}\mid \text{Mother})=\frac{1+1}{1+7}=\frac{1}{4}.
@@ -153,9 +153,9 @@ $$
 
 1. 人类猜字困惑度计算
    1. 放弃猜测：记为20次（可能会低估人类熵，但具体不会差的很大）
-   2. 第$i$个位置的信息量$I_i=\log_2 g_i$，$g_i$为猜中次数
+   2. 第 $i$个位置的信息量 $I_i=\log_2 g_i$，$g_i$为猜中次数
    3. 逐位置取信息熵的平均（衡量不确定性）$$\bar H_{\text{human}}=\frac1N\sum_i I_i$$
-   4. 等效困惑度$PPL=2^H$
+   4. 等效困惑度 $PPL=2^H$
 2. 总体对比表
 
 | 指标 | 人类 | N=2 | N=3 |
